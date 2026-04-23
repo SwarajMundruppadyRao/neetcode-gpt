@@ -3,60 +3,50 @@ from typing import List
 
 
 class Solution:
-    def forward_and_backward(
-        self,
-        x: List[float],
-        W1: List[List[float]], b1: List[float],
-        W2: List[List[float]], b2: List[float],
-        y_true: List[float]
-    ) -> dict:
-        
-        # Convert to numpy arrays
+    def forward_and_backward(self,
+                              x: List[float],
+                              W1: List[List[float]], b1: List[float],
+                              W2: List[List[float]], b2: List[float],
+                              y_true: List[float]) -> dict:
+        # Architecture: x -> Linear(W1, b1) -> ReLU -> Linear(W2, b2) -> predictions
+        # Loss: MSE = mean((predictions - y_true)^2)
+        #
+        # Return dict with keys:
+        #   'loss':  float (MSE loss, rounded to 4 decimals)
+        #   'dW1':   2D list (gradient w.r.t. W1, rounded to 4 decimals)
+        #   'db1':   1D list (gradient w.r.t. b1, rounded to 4 decimals)
+        #   'dW2':   2D list (gradient w.r.t. W2, rounded to 4 decimals)
+        #   'db2':   1D list (gradient w.r.t. b2, rounded to 4 decimals)
         x = np.array(x)
-        w1 = np.array(W1)
-        w2 = np.array(W2)
-        b1 = np.array(b1)
-        b2 = np.array(b2)
+        W1 = np.array(W1) # 2x2
+        b1 = np.array(b1) # 1x2
+        W2 = np.array(W2) # 1x2
+        b2 = np.array(b2) # 1x1
         y_true = np.array(y_true)
+        
+        z1 =  x @ W1.T + b1 # 1x2 * 2x2 = 1x2
+        a1 = np.maximum(z1, 0) # 1x2
+        z2 = a1 @ W2.T + b2 # 1x2 * 2x1 = 1x1
+        loss = np.mean((z2-y_true)**2) 
+        results = {}
+        results['loss'] = np.round(loss, 4)
 
-        # ---- Forward ----
-        # W1: (hidden_dim, input_dim)
-        z1 = w1 @ x + b1
-        a1 = np.maximum(0, z1)
+        n = len(y_true) if y_true.ndim > 0 else 1
 
-        # W2: (output_dim, hidden_dim)
-        z2 = w2 @ a1 + b2
-        y_pred = z2
 
-        # Loss (MSE)
-        n = y_true.shape[0]
-        loss = np.mean((y_pred - y_true) ** 2)
+        dz2 = 2 * (z2-y_true)/n
+        dW2 = dz2.reshape(-1,1) @ a1.reshape(1,-1) # output you want is 1x2 (1x1 * 1x2)
+        dB2 = dz2 
+        da1 = dz2.reshape(-1,1) @ W2 # output should be 1x2 (1x1 * 1x2)
+        da1 = da1.flatten()
+        dz1 = da1 * (a1!=0).astype(float) # relu derivative # 1x2
+        dW1 = dz1.reshape(-1, 1) @ x.reshape(1, -1) # u want 2x2 (2x1 * 1x2)
+        dB1 = dz1
 
-        # ---- Backward ----
-        dz2 = (2 / n) * (y_pred - y_true)
+        results['dW2'] = np.round(dW2, 4).tolist()
+        results['db2'] = np.round(dB2, 4).tolist()
+        results['dW1'] = np.round(dW1, 4).tolist()
+        results['db1'] = np.round(dB1, 4).tolist()
+        return results
 
-        # Gradients for second layer
-        dW2 = np.outer(dz2, a1)   # (output_dim, hidden_dim)
-        db2 = dz2
 
-        # Backprop to hidden layer
-        dA1 = w2.T @ dz2
-        dz1 = dA1 * (z1 > 0)
-
-        # Gradients for first layer
-        dW1 = np.outer(dz1, x)    # (hidden_dim, input_dim)
-        db1 = dz1
-
-        # ---- Clean rounding (remove -0.0) ----
-        def clean(arr):
-            arr = np.round(arr, 4)
-            arr[np.isclose(arr, 0)] = 0.0
-            return arr.tolist()
-
-        return {
-            'loss': round(float(loss), 4),
-            'dW1': clean(dW1),
-            'db1': clean(db1),
-            'dW2': clean(dW2),
-            'db2': clean(db2)
-        }
